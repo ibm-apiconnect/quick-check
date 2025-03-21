@@ -13,8 +13,16 @@ This script lets you do a quick validation to ensure the core functionality of A
         -s, --server TEXT         Platform API hostname  [required]
         -o, --org TEXT            Organisation  [required]
         -c, --catalog TEXT        Catalog  [required]
-        -k, --apikey TEXT         API Key
-        -f, --filename TEXT       API Definition to use (default is to use set-variable.yaml)
-        -i, --client_id TEXT      client id required to retrieve a bearer token from apim
-        -i, --client_secret TEXT  client secret required to retrieve a bearer tokenfrom apim
+        --verify / --no-verify    Verify certificates  [required]
+        -f, --filename TEXT       API definition to use from templates directory (default is set-variable.yaml)
+
+### API Manager Authentication
+
+You can either use an [API Key](https://www.ibm.com/docs/en/api-connect/10.0.8?topic=applications-managing-platform-rest-api-keys) or username/password/realm to authenticate the script to API Manager.  
+        -a, --apikey
+        -u, --username
+        -p, --password
+        -r, --realm
+        --client_id TEXT      client id required to retrieve a bearer token from apim
+        --client_secret TEXT  client secret required to retrieve a bearer tokenfrom apim
 

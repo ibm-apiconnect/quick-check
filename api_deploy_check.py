@@ -1,3 +1,4 @@
+import sys
 import json
 import random
 import string
@@ -7,15 +8,19 @@ import click
 import requests
 import yaml
 
+try:
+    # Optional support to use colorlog for coloured output 
+    import colorlog
+    handler = colorlog.StreamHandler()
+    handler.setFormatter(colorlog.ColoredFormatter('%(log_color)s%(message)s'))
+    logger = colorlog.getLogger('deploy-test')
+    logger.addHandler(handler)
+    logger.setLevel('INFO')
+except ImportError:
+    import logging
+    logger = logging.getLogger('deploy-test')
+    logging.basicConfig(format='%(levelname)s: %(message)s', level=logging.INFO)
 
-import colorlog
-
-handler = colorlog.StreamHandler()
-handler.setFormatter(colorlog.ColoredFormatter('%(log_color)s%(levelname)s:%(name)s:%(message)s'))
-
-logging = colorlog.getLogger('deploy-test')
-logging.addHandler(handler)
-logging.setLevel('INFO')
 
 MAX_TRIES = 15
 
@@ -54,7 +59,7 @@ visibility:
 """
 
 
-def get_token(hostname, api_key, username, password, 
+def get_token(hostname, api_key, username, password,
               realm, client_id, client_secret, verify=True):
     """ Get token from API Manager """
     token_request = None
@@ -77,9 +82,9 @@ def get_token(hostname, api_key, username, password,
           "grant_type": "password"
         }
     else:
-        logging.critical("No authentication method to use")
+        logger.critical("No authentication method to use")
     response = requests.post(
-      url="https://{}/api/token".format(hostname),
+      url=f"https://{hostname}/api/token",
       headers={
         "Accept": "application/json",
         "Content-Type": "application/json",
@@ -88,76 +93,84 @@ def get_token(hostname, api_key, username, password,
       verify=verify
     )
     if response.status_code == 200: 
-        logging.info('Retrieve token - status: {status_code}'.format(
-          status_code=response.status_code))
+        logger.info('Retrieve token - status: %d',
+          response.status_code)
         return response.json().get('access_token', None)
-    else: 
-        logging.error('Retrieve token - status: {status_code}, response: {text}'.format(
-          status_code=response.status_code, text=response.text))
-        return None
+
+    logger.error('Retrieve token - status: %d, response: %s',
+      response.status_code, response.text)
+    return None
 
 
-def publish_api(hostname, token, organisation, catalog, eyecatcher, filename, verify=True):
+def publish_api(hostname, token, org, catalog, eyecatcher, filename, verify=True):
     """ publish the API replacing 'RESPONSE' with the eyecatcher """
-    with open("api-deploy-check/" + filename, 'r') as openapi_file:
+
+    # Load the template API to use
+    with open("templates/" + filename,
+              'r', encoding='utf-8') as openapi_file:
         openapi_yaml = "\n".join(openapi_file.readlines())
+
     openapi = yaml.safe_load(openapi_yaml)
     api_name = "{x-ibm-name}:{version}".format(**(openapi['info']))
+
+    # Replace RESPONSE with the eyecatcher to spot on update
     api_definition = openapi_yaml.replace('RESPONSE', eyecatcher)
-    product_definition = product_yaml.replace('publish-test:1.0.1', api_name)
-    logging.debug(api_definition)
+
+    # Ensure the product points to the right API
+    product_definition = product_yaml.replace(
+        'publish-test:1.0.1', api_name)
+
+    logger.debug(api_definition)
+
+    # Build the body for the request
     files = {
       'product': ('product.yaml', product_definition, 'application/yaml'),
       'openapi': ('openapi.yaml', api_definition, 'application/yaml')
     }
 
     response = requests.post(
-      url="https://{}/api/catalogs/{}/{}/publish".format(
-        hostname, organisation, catalog),
+      url=f"https://{hostname}/api/catalogs/{org}/{catalog}/publish",
       headers={
-        "Authorization": "Bearer {}".format(token),
+        "Authorization": f"Bearer {token}",
         "Accept": "application/json"
       },
       files=files,
       verify=verify
     )
-    logging.info('Publish publish-test API - status: {status_code}'.format(
-      status_code=response.status_code))
+    logger.info('Publish publish-test API - status code: %d', response.status_code)
     if 'updated_at' in response.json():
-        logging.info('Publish response shows updated at: {updated_at}'.format(
-          **response.json()))
+        logger.info('Publish response shows updated at: %s',
+          response.json()['updated_at'])
         return openapi['info']['x-ibm-name']
-    else:
-        logging.error(response.content)
-        exit(8)
+
+    logger.error(response.content)
+    sys.exit(8)
 
 
 def get_analytics_records(
         hostname, token,
-        organisation, catalog,
-        analytics_service, api_name, verify):
+        org, catalog,
+        a7s, api_name, verify):
     """ Call the APIC Analytics API to find the record for the transaction """
 
     response = requests.get(
-        url="https://{}/analytics/{}/catalogs/{}/{}/events?api_name={}&timeframe=last15minutes".format(
-          hostname, analytics_service, organisation, catalog, api_name),
+        url=f"https://{hostname}/analytics/{a7s}/catalogs/{org}/{catalog}/events?api_name={api_name}&timeframe=last15minutes",
         headers={
-            "Authorization": "Bearer {}".format(token),
+            "Authorization": f"Bearer {token}",
             "Accept": "application/json"
         },
         verify=verify
     )
     # TODO handle errors
-    return response.json()
+    return (response.json(), response.headers.get('x-request-id'))
 
 
 def get_catalog_details(hostname, token, org, catalog, verify):
     """ Get the base url for APIs in this catalog """
     response = requests.get(
-        url="https://{}/api/catalogs/{}/{}/configured-gateway-services".format(
-          hostname, org, catalog),
+        url=f"https://{hostname}/api/catalogs/{org}/{catalog}/configured-gateway-services",
         headers={
-            "Authorization": "Bearer {}".format(token),
+            "Authorization": f"Bearer {token}",
             "Accept": "application/json"
         },
         verify=verify
@@ -165,26 +178,37 @@ def get_catalog_details(hostname, token, org, catalog, verify):
     # TODO handle errors
     cgs = response.json()
     if cgs["total_results"] > 1:
-        logging.warn("Catalog has multiple gateway services defined, using {}".format(
-          cgs['results'][0]["title"]))
+        logger.warning("Catalog has multiple gateway services defined, using %s",
+          cgs['results'][0]["title"])
     details = {
       "analytics": cgs['results'][0]["analytics_service_url"].split('/')[-1],
       "api_base": cgs['results'][0]['catalog_base']
     }
     return details
 
+
 @click.command()
 @click.option('--server', '-s', required=True, help='Platform API hostname')
+@click.option('--client_id', default="599b7aef-8841-4ee2-88a0-84d49c4d6ff2",
+              envvar='CLIENT_ID',
+              help='client id required to retrieve a bearer token')
+@click.option('--client_secret', default="0ea28423-e73b-47d4-b40e-ddb45c48bb0c",
+              envvar='CLIENT_SECRET',
+              help='client secret required to retrieve a bearer token')
 @click.option('--org', '-o', required=True, help='Organisation')
 @click.option('--catalog', '-c', required=True, help='Catalog')
-@click.option('--verify/--no-verify', required=True, help='Verify certificates')
-@click.option('--apikey', '-a', required=False, help='API Key', envvar='APIC_API_KEY')
-@click.option('--username', '-u', required=False, help='Username', envvar='APIC_USERNAME')
-@click.option('--password', '-p', required=False, help='Password', envvar='APIC_PASSWORD')
-@click.option('--realm', '-r', required=False, help='Realm', default='provider/default-idp-2', envvar='APIC_REALM')
-@click.option('--filename', '-f', required=False, help='API Definition to use', default='set-variable.yaml')
-@click.option('--client_id', '-i', default="599b7aef-8841-4ee2-88a0-84d49c4d6ff2", envvar='CLIENT_ID', help='client id required to retrieve a bearer token from apim')
-@click.option('--client_secret', '-i', default="0ea28423-e73b-47d4-b40e-ddb45c48bb0c", envvar='CLIENT_SECRET', help='client secret required to retrieve a bearer token from apim')
+@click.option('--verify/--no-verify', required=True, default=True,
+              help='Verify certificates')
+@click.option('--apikey', '-a', required=False, help='API Key',
+              envvar='APIC_API_KEY')
+@click.option('--username', '-u', required=False, help='Username',
+              envvar='APIC_USERNAME')
+@click.option('--password', '-p', required=False, hide_input=True, help='Password',
+              envvar='APIC_PASSWORD')
+@click.option('--realm', '-r', required=False, help='Realm',
+              default='provider/default-idp-2', envvar='APIC_REALM')
+@click.option('--filename', '-f', required=False, help='API Definition to use',
+              default='set-variable.yaml')
 def deploy_test_cli(
   server=None,
   apikey=None,
@@ -198,13 +222,13 @@ def deploy_test_cli(
   client_secret=None,
   filename='set-variable.yaml'):
     """ CLI wrapper for deploy test"""
-    deploy_test(
+    sys.exit(deploy_test(
         server, verify,
         apikey,
         username, password, realm,
         org, catalog,
         client_id, client_secret,
-        filename)
+        filename))
 
 
 def deploy_test(
@@ -217,83 +241,75 @@ def deploy_test(
   filename='set-variable.yaml'):
     """ deploy an API and test it """
     platform_api_host = server
+    print(server)
     # Obtain a bearer token for this user to make further API calls
     token = get_token(platform_api_host, apikey, username, password, realm, client_id, client_secret, verify)
 
     if token:
         eyecatcher = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(25))
-        logging.info("Eyecatcher for API is: {}".format(eyecatcher))
+        logger.info("Eyecatcher for API is: %s", eyecatcher)
         api_name = publish_api(platform_api_host, token, org, catalog, eyecatcher, filename, verify)
-        logging.debug(api_name)
+        logger.debug(api_name)
 
+        # Get configuration of the catalog
         catalog_details = get_catalog_details(platform_api_host, token, org, catalog, verify)
 
         api_base_path = "publish-test"
         new_api = "{}/{}".format(catalog_details['api_base'], api_base_path)
-        logging.info('Published API URL: {}'.format(new_api))
+        logger.info('Published API URL: %s', new_api)
 
         attempt = 0
-        transaction_id = None
         updated = False
         while attempt < MAX_TRIES:
             attempt += 1
-            response = requests.get(
-                                    "{}?eyecatcher={}&attempt={}".format(
-                                      new_api,
-                                      eyecatcher,
-                                      attempt), verify=verify)
-
+            response = requests.get(f"{new_api}?eyecatcher={eyecatcher}&attempt={attempt}",
+                                    verify=verify)
+            x_gtid = response.headers.get('x-global-transaction-id')
             if eyecatcher in response.text:
-                logging.info('Invoke {} / {}: status: {status_code}, response: {text} - Success!'.format(attempt, MAX_TRIES, status_code=response.status_code, text=response.text[:50]))
-                logging.warning("API response matches for {}".format(eyecatcher))
-                transaction_id = response.headers['x-global-transaction-id']
+                logger.info('Invoke %d / %d: status: %d, response: %s, GTID: %s - Successful match!',
+                    attempt, MAX_TRIES, response.status_code,
+                    response.text[:50], x_gtid)
+                logger.info("API response matches for %s", eyecatcher)
                 updated = True
                 break
-            else:
-                try:
-                    logging.info("Request ID: {x-request-id} GTID: {x-global-transaction-id}, CF-RAY: {CF-RAY}".format(**response.headers))
-                except KeyError:
-                    logging.info(response.headers)
-                logging.warning('Invoke {} / {}: status: {status_code}, response: {text}'.format(attempt, MAX_TRIES, status_code=response.status_code, text=response.text[:50]))
-                time.sleep(5) 
+            logger.warning('Invoke %d / %d: status: %d, response: %s, GTID: %s',
+                attempt, MAX_TRIES, response.status_code,
+                response.text[:50], x_gtid)
+            time.sleep(5)
+
         if updated:
-            logging.info("API is updated")
+            logger.info("API is updated")
+
             # Now look in Analytics...
             attempt = 0
             found = False
             while attempt < MAX_TRIES:
-                events = get_analytics_records(platform_api_host, token, org, catalog, catalog_details['analytics'], api_name, verify)
+                attempt += 1
+                (events, req_id) = get_analytics_records(platform_api_host, token, org, catalog, catalog_details['analytics'], api_name, verify)
                 for event in events['events']:
-                    if event['global_transaction_id'] == transaction_id:
-                        logging.info("Matched transaction id ({}) of successful call in analytics".format(transaction_id))
-                        logging.info("API response in {time_to_serve_request}ms for {query_string}".format(**event))
+                    if event['global_transaction_id'] == x_gtid:
+                        logger.info('Analytics %d / %d: events: %d, request_id %s - Transaction ID found',
+                            attempt, MAX_TRIES, events['total'], req_id)
+                        logger.info("Matched transaction id (%s) of successful call in analytics", x_gtid)
+                        logger.info("API response in %dms for %s", event.get('time_to_serve_request'), event.get('query_string'))
                         found = True
                 if found:
-                    break
-                else:
-                    logging.warning('Analytics {} / {}: events: {events}'.format(attempt, MAX_TRIES, events=events['total']))
-                    time.sleep(5) 
+                    return 0
+
+                logger.warning('Analytics %d / %d: events: %d, request_id %s',
+                    attempt, MAX_TRIES, events['total'], req_id)
+                time.sleep(5)
             if not found:
-                logging.critical("API record not in analytics after {} seconds".format(MAX_TRIES * 5))
+                logger.critical("API record not in analytics after %d seconds", (MAX_TRIES * 5))
                 return 1
 
         else:
-            logging.critical("API not updated after {} seconds".format(MAX_TRIES * 5))
-            return 1
+            logger.critical("API not updated after %d seconds", (MAX_TRIES * 5))
+            return 2
     else:
-        logging.critical("Unable to retrieve token")
+        logger.critical("Unable to retrieve token")
         return 4
 
 
 if __name__ == '__main__':
     deploy_test_cli()
-
-
-
-
-
-
-#@hostname = api-manager.d-j01.apiconnect.dev.automation.ibm.com
-#
-#GET 'https://{{hostname}}/analytics/5124699d-40ec-40d4-a964-6be04a1988ac/orgs/e5f3e142-f76f-4c94-87b4-e5a2dd159617/events?timeframe=last30days&limit=50&offset=0'
-#Accept: application/json

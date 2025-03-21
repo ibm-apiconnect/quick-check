@@ -1,0 +1,34 @@
+swagger: '2.0'
+info:
+  title: Lambda Test
+  x-ibm-name: publish-test-lambda
+  version: 1.0.1
+x-ibm-configuration:
+  cors:
+    enabled: true
+  gateway: datapower-api-gateway
+  type: rest
+  phase: realized
+  enforced: true
+  testable: true
+  assembly:
+    execute:
+      - gatewayscript:
+          version: 2.0.0
+          title: gatewayscript
+          source: >2+
+            context.set('message.body', "RESPONSE")
+        
+basePath: /publish-test
+paths:
+  /:
+    get:
+      responses:
+        '200':
+          description: success
+          schema:
+            type: string
+      consumes: []
+      produces: []
+schemes:
+  - https

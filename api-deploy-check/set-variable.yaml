@@ -1,0 +1,35 @@
+swagger: '2.0'
+info:
+  title: Set Variable
+  x-ibm-name: publish-test
+  version: 1.0.1
+x-ibm-configuration:
+  cors:
+    enabled: true
+  gateway: datapower-api-gateway
+  type: rest
+  phase: realized
+  enforced: true
+  testable: true
+  assembly:
+    execute:
+      - set-variable:
+          version: 2.0.0
+          title: set-variable
+          actions:
+            - set: message.body
+              value: RESPONSE
+              type: string
+basePath: /publish-test
+paths:
+  /:
+    get:
+      responses:
+        '200':
+          description: success
+          schema:
+            type: string
+      consumes: []
+      produces: []
+schemes:
+  - https

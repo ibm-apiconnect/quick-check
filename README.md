@@ -7,6 +7,20 @@ This script lets you do a quick validation to ensure the core functionality of A
 - Invoke the API, looping until there is a successful response up to a limit.
 - Taking the global transaction id and api name, search for the record in Analytics relating to the successful call.
 
+
+## Installation
+
+1. Clone this repository
+
+    git clone https://github.com/ibm-apiconnect/quick-check.git
+
+2. Install the requirements
+
+    pip install -r requirements.txt
+
+3. Obtain the appropriate credentials for your API Connect deployment
+4. Run the script according to the Usage below
+
 ## Usage
 
     python api_deploy_check.py 
@@ -16,9 +30,7 @@ This script lets you do a quick validation to ensure the core functionality of A
         --verify / --no-verify    Verify certificates  [required]
         -f, --filename TEXT       API definition to use from templates directory (default is set-variable.yaml)
 
-### API Manager Authentication
-
-You can either use an [API Key](https://www.ibm.com/docs/en/api-connect/10.0.8?topic=applications-managing-platform-rest-api-keys) or username/password/realm to authenticate the script to API Manager.
+**API Manager Authentication** - You can either use an [API Key](https://www.ibm.com/docs/en/api-connect/10.0.8?topic=applications-managing-platform-rest-api-keys) or username/password/realm to authenticate the script to API Manager.
 
         -a, --apikey
         -u, --username

@@ -18,7 +18,8 @@ This script lets you do a quick validation to ensure the core functionality of A
 
 ### API Manager Authentication
 
-You can either use an [API Key](https://www.ibm.com/docs/en/api-connect/10.0.8?topic=applications-managing-platform-rest-api-keys) or username/password/realm to authenticate the script to API Manager.  
+You can either use an [API Key](https://www.ibm.com/docs/en/api-connect/10.0.8?topic=applications-managing-platform-rest-api-keys) or username/password/realm to authenticate the script to API Manager.
+
         -a, --apikey
         -u, --username
         -p, --password
@@ -26,3 +27,4 @@ You can either use an [API Key](https://www.ibm.com/docs/en/api-connect/10.0.8?t
         --client_id TEXT      client id required to retrieve a bearer token from apim
         --client_secret TEXT  client secret required to retrieve a bearer tokenfrom apim
 
+The client id and secret can be obtained from the **Tools for Download** page in API Manager where you can obtain the **Toolkit credentials** which will download a `credentials.json` file containing these values.

@@ -1,4 +1,4 @@
 click
 requests
-yaml
+PyYAML
 colorlog

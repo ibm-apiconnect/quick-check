@@ -1,0 +1,62 @@
+---
+kind: FreeFlowPolicySequence
+apiVersion: api.ibm.com/v1
+metadata:
+  name: policies
+  namespace: quick-api
+  version: '1.0'
+  tags: []
+  labels:
+    gatewayTypes:
+      - nano
+spec:
+  main:
+    - $ref: quick-api:set:1.0
+  monitoring:
+    $ref: quick-api:telemetry:1.0
+
+---
+kind: API
+apiVersion: api.ibm.com/v1
+metadata:
+  name: quick
+  version: '1.0'
+  namespace: quick-api
+  tags: []
+  type: REST
+spec:
+  api-spec:
+    $path: quick-api-spec.yml
+  policy-sequence:
+    - $ref: quick-api:policies:1.0
+
+---
+kind: Set
+apiVersion: api.ibm.com/v1
+metadata:
+  name: set
+  namespace: quick-api
+  version: '1.0'
+  tags: []
+  labels:
+    gatewayTypes:
+      - nano
+spec:
+  valueType: plain
+  messageBody:
+    messageName: response
+    value: RESPONSE
+
+---
+kind: Telemetry
+apiVersion: api.ibm.com/v1
+metadata:
+  name: telemetry
+  namespace: quick-api
+  version: '1.0'
+  tags: []
+  labels:
+    gatewayTypes:
+      - nano
+spec: {}
+

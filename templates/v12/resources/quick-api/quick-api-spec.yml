@@ -1,0 +1,13 @@
+openapi: 3.0.4
+info:
+  title: quick
+  version: '1.0'
+  description: ''
+paths:
+  /:
+    summary: ''
+    description: ''
+    get:
+      responses:
+        '200':
+          description: ''

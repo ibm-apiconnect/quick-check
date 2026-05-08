@@ -192,10 +192,7 @@ def publish_api_v12(hostname, token, org, catalog, eyecatcher, verify=True):
         logger.error("Could not find API document in v12 definition")
         sys.exit(8)
     
-    api_name = "{}:{}".format(
-        api_doc['metadata']['name'],
-        api_doc['metadata']['version']
-    )
+    api_name = api_doc['metadata']['name']
     
     # Create a zip file in /tmp for investigation
     zip_path = '/tmp/api.zip'
@@ -270,6 +267,9 @@ def get_analytics_records(
         org, catalog,
         a7s, api_name, verify):
     """ Call the APIC Analytics API to find the record for the transaction """
+
+    logger.info('Getting analytics records for %s', api_name)
+        
 
     response = requests.get(
         url=f"https://{hostname}/analytics/{a7s}/catalogs/{org}/{catalog}/events?api_name={api_name}&timeframe=last15minutes",
@@ -399,21 +399,28 @@ def deploy_test(
 
         attempt = 0
         updated = False
+        x_gtid = None
         while attempt < MAX_TRIES:
             attempt += 1
-            response = requests.get(f"{new_api}?eyecatcher={eyecatcher}&attempt={attempt}",
-                                    verify=verify)
-            x_gtid = response.headers.get('x-global-transaction-id')
-            if eyecatcher in response.text:
-                logger.info('Invoke %d / %d: status: %d, response: %s, GTID: %s - Successful match!',
+            try:
+                response = requests.get(f"{new_api}?eyecatcher={eyecatcher}&attempt={attempt}",
+                                        headers={'X-Global-Transaction-Id': eyecatcher + "-" + str(attempt)},
+                                        verify=verify)
+                x_gtid = response.headers.get('x-global-transaction-id')
+                logger.info(response.headers)
+                if eyecatcher in response.text:
+                    logger.info('Invoke %d / %d: status: %d, response: %s, GTID: %s - Successful match!',
+                        attempt, MAX_TRIES, response.status_code,
+                        response.text[:50], x_gtid)
+                    logger.info("API response matches for %s", eyecatcher)
+                    updated = True
+                    break
+                logger.warning('Invoke %d / %d: status: %d, response: %s, GTID: %s',
                     attempt, MAX_TRIES, response.status_code,
                     response.text[:50], x_gtid)
-                logger.info("API response matches for %s", eyecatcher)
-                updated = True
-                break
-            logger.warning('Invoke %d / %d: status: %d, response: %s, GTID: %s',
-                attempt, MAX_TRIES, response.status_code,
-                response.text[:50], x_gtid)
+            except requests.exceptions.ReadTimeout:
+                logger.warning('Invoke %d / %d: ReadTimeout - retrying',
+                    attempt, MAX_TRIES)
             time.sleep(5)
 
         if updated:
@@ -426,18 +433,29 @@ def deploy_test(
                 attempt += 1
                 (events, req_id) = get_analytics_records(platform_api_host, token, org, catalog, catalog_details['analytics'], api_name, verify)
                 for event in events['events']:
-                    if event['global_transaction_id'] == x_gtid:
+                    if event.get('global_transaction_id') == x_gtid:
                         logger.info('Analytics %d / %d: events: %d, request_id %s - Transaction ID found',
                             attempt, MAX_TRIES, events['total'], req_id)
                         logger.info("Matched transaction id (%s) of successful call in analytics", x_gtid)
                         logger.info("API response in %dms for %s", event.get('time_to_serve_request'), event.get('query_string'))
                         found = True
+                    elif 'response_http_headers' in event:
+                        for header in event['response_http_headers']:
+                            if 'x-global-transaction-id' in header:
+                                logger.debug(header.get('x-global-transaction-id'))
+                                if header.get('x-global-transaction-id') == x_gtid:
+                                    logger.info('Analytics %d / %d: events: %d, request_id %s - Transaction ID found',
+                                        attempt, MAX_TRIES, events['total'], req_id)
+                                    logger.info("Matched transaction id (%s) of successful call in analytics", x_gtid)
+                                    logger.info("API response in %dms for %s", event.get('time_to_serve_request'), event.get('query_string'))
+                                    found = True
+
                 if found:
                     return 0
 
                 logger.warning('Analytics %d / %d: events: %d, request_id %s',
                     attempt, MAX_TRIES, events['total'], req_id)
-                time.sleep(5)
+                time.sleep(10)
             if not found:
                 logger.critical("API record not in analytics after %d seconds", (MAX_TRIES * 5))
                 return 1

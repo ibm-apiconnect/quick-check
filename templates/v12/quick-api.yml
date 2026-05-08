@@ -58,5 +58,12 @@ metadata:
   labels:
     gatewayTypes:
       - nano
-spec: {}
+spec: 
+  verbosity:
+    - level: detailed
+      onSuccessTrimTo: detailed
+      inboundLevel: basic
+      outboundLevel: basic
+      operations: []
+
 
